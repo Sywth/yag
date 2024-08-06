@@ -18,11 +18,11 @@ var Constants = struct {
 	TEXTURE_SIZE_PX       float32
 	NOISE                 noise.Generator
 }{
-	TILE_SIZE:             15,
-	CHUNK_SIZE:            50,
+	TILE_SIZE:             128,
+	CHUNK_SIZE:            15,
 	MAP_SCALAR:            12,
 	PATH_TO_TEXTURE_ATLAS: "assets/texture_atlas.png",
-	TEXTURE_SIZE_PX:       20,
+	TEXTURE_SIZE_PX:       32,
 	NOISE:                 noiseGen,
 }
 
@@ -39,11 +39,11 @@ const (
 )
 
 type Tile struct {
-	tileType TileType
+	TileType TileType
 }
 
 func (tile *Tile) Draw(sx, sy float32, textureAtlas rl.Texture2D) {
-	textureData := GetTileTexture(tile.tileType)
+	textureData := GetTileTexture(tile.TileType)
 	rl.DrawTexturePro(
 		textureAtlas,
 		textureData.srcRect,
@@ -58,22 +58,26 @@ func (tile *Tile) Draw(sx, sy float32, textureAtlas rl.Texture2D) {
 
 // AREA : CHUNK
 type Chunk struct {
-	tiles *vl.Matrix[Tile]
+	Tiles *vl.Matrix[Tile]
 }
 
 func (chunk *Chunk) Serialize() []byte {
 	var buffer bytes.Buffer
 	encoder := gob.NewEncoder(&buffer)
-	encoder.Encode(chunk)
+	if err := encoder.Encode(chunk); err != nil {
+		panic(err)
+	}
 	return buffer.Bytes()
 }
 
 func NewChunkFromSerialized(bufferBytes []byte) *Chunk {
-	var chunk Chunk
 	buffer := bytes.NewBuffer(bufferBytes)
 	decoder := gob.NewDecoder(buffer)
-	decoder.Decode(&chunk)
-	return &chunk
+	chunk := &Chunk{}
+	if err := decoder.Decode(chunk); err != nil {
+		panic(err)
+	}
+	return chunk
 }
 
 type ChunkMap struct {
@@ -102,7 +106,7 @@ func heightToTileType(height float32) TileType {
 func generateChunk(chunkCoord vl.Vec2Int32) *Chunk {
 	chunkSize := int32(Constants.CHUNK_SIZE)
 	chunk := &Chunk{
-		tiles: vl.NewMatrix[Tile](chunkSize, chunkSize),
+		Tiles: vl.NewMatrix[Tile](chunkSize, chunkSize),
 	}
 	for y := int32(0); y < chunkSize; y++ {
 		for x := int32(0); x < chunkSize; x++ {
@@ -110,8 +114,8 @@ func generateChunk(chunkCoord vl.Vec2Int32) *Chunk {
 				float32(chunkCoord.X*chunkSize+x)/Constants.MAP_SCALAR,
 				float32(chunkCoord.Y*chunkSize+y)/Constants.MAP_SCALAR,
 			)
-			chunk.tiles.Set(y, x, Tile{
-				tileType: heightToTileType(height),
+			chunk.Tiles.Set(y, x, Tile{
+				TileType: heightToTileType(height),
 			})
 		}
 	}
@@ -119,16 +123,16 @@ func generateChunk(chunkCoord vl.Vec2Int32) *Chunk {
 }
 
 // Expects tx, ty as tile coordinates (should be integer float32)
-func (chunkMap *ChunkMap) get(tx, ty float32) Tile {
+func (world *World) get(tx, ty float32) Tile {
 
 	// DEBUG CHUNK BORDERS
 	/*
 		if int32(tx)%int32(Constants.CHUNK_SIZE) == 0 || int32(ty)%int32(Constants.CHUNK_SIZE) == 0 {
 			return Tile{
-				tileType: UNDEFINED,
+				TileType: UNDEFINED,
 			}
 		}
-	//*/
+		//*/
 	// END DEBUG CHUNK BORDERS
 
 	key := vl.Vec2Int32{
@@ -136,15 +140,29 @@ func (chunkMap *ChunkMap) get(tx, ty float32) Tile {
 		Y: vl.FloorDiv(ty, Constants.CHUNK_SIZE),
 	}
 
-	chunk, ok := chunkMap.chunks[key]
-	if !ok {
-		chunk = generateChunk(key)
-		chunkMap.chunks[key] = chunk
-	}
-
 	tileInChunkX := vl.FloatModInt(tx, Constants.CHUNK_SIZE)
 	tileInChunkY := vl.FloatModInt(ty, Constants.CHUNK_SIZE)
-	tile := chunk.tiles.Get(tileInChunkY, tileInChunkX)
+
+	// try Main Memory
+	chunk, ok := world.chunkMap.chunks[key]
+	if ok {
+		tile := chunk.Tiles.Get(tileInChunkY, tileInChunkX)
+		return tile
+	}
+
+	// try Disk
+	chunk, ok = world.backend.GetChunk(key.X, key.Y)
+	if ok {
+		tile := chunk.Tiles.Get(tileInChunkY, tileInChunkX)
+		world.chunkMap.chunks[key] = chunk
+		return tile
+	}
+
+	// All else fails, generate chunk
+	chunk = generateChunk(key)
+	world.chunkMap.chunks[key] = chunk
+	world.backend.SaveChunk(key.X, key.Y, chunk)
+	tile := chunk.Tiles.Get(tileInChunkY, tileInChunkX)
 	return tile
 }
 
@@ -188,6 +206,26 @@ func modeMenu(game *Game) {
 
 // END AREA : MODE
 
+// AREA : ECS
+type World struct {
+	Name string
+
+	chunkMap ChunkMap
+	backend  *Backend
+}
+
+func NewWorld(name string) *World {
+	return &World{
+		Name: name,
+		chunkMap: ChunkMap{
+			chunks: make(map[vl.Vec2Int32]*Chunk),
+		},
+		backend: NewBackend(),
+	}
+}
+
+// END AREA : ECS
+
 // AREA : GAME
 type Camera struct {
 	position rl.Vector2
@@ -198,20 +236,6 @@ type GameSettings struct {
 	MoveSpeed  float32
 	Zoom       float32
 	ZoomSpeed  float32
-}
-
-type World struct {
-	Name     string
-	chunkMap ChunkMap
-}
-
-func NewWorld(name string) *World {
-	return &World{
-		Name: name,
-		chunkMap: ChunkMap{
-			chunks: make(map[vl.Vec2Int32]*Chunk),
-		},
-	}
 }
 
 type Game struct {
@@ -241,13 +265,13 @@ func (game *Game) Draw() {
 		Y: vl.FloorDiv(wBottomRight.Y, Constants.TILE_SIZE) + 1,
 	}
 	var sy float32 = -vl.FloatModFloat(wTopLeft.Y, Constants.TILE_SIZE)
+
 	for ty := float32(tTopLeft.Y); ty < float32(tBottomRight.Y); ty += 1 {
 		var sx float32 = -vl.FloatModFloat(wTopLeft.X, Constants.TILE_SIZE)
 		for tx := float32(tTopLeft.X); tx < float32(tBottomRight.X); tx += 1 {
 
-			tile := game.world.chunkMap.get(tx, ty)
+			tile := game.world.get(tx, ty)
 			tile.Draw(sx, sy, game.textureAtlas)
-
 			// DEBUG ORIGIN
 			/*
 				if tx == 0 && ty == 0 {

@@ -2,7 +2,6 @@ package game
 
 import (
 	"database/sql"
-	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -34,13 +33,18 @@ func (backend *Backend) SaveChunk(x, y int32, chunk *Chunk) {
 	`, x, y, serializedChunk)
 }
 
-func (backend *Backend) GetChunk(x, y int32) (bool, *Chunk) {
-	row := backend.Database.QueryRow("SELECT chunkData FROM chunk WHERE x = ? AND y = ?", x, y)
-	var serializedChunk []byte
-	err := row.Scan(&serializedChunk)
-	if err != nil {
-		fmt.Println(fmt.Errorf("error getting chunk: %v", err))
-		return false, nil
+func (backend *Backend) GetChunk(x, y int32) (*Chunk, bool) {
+	rows, _ := backend.Database.Query(`
+		SELECT chunkData FROM chunk WHERE x = ? AND y = ?
+	`, x, y)
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, false
 	}
-	return true, NewChunkFromSerialized(serializedChunk)
+
+	var serializedChunk []byte
+	rows.Scan(&serializedChunk)
+	chunk := NewChunkFromSerialized(serializedChunk)
+	return chunk, true
 }
