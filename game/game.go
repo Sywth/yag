@@ -18,9 +18,9 @@ var Constants = struct {
 	TEXTURE_SIZE_PX       float32
 	NOISE                 noise.Generator
 }{
-	TILE_SIZE:             128,
-	CHUNK_SIZE:            15,
-	MAP_SCALAR:            12,
+	TILE_SIZE:             8,
+	CHUNK_SIZE:            16,
+	MAP_SCALAR:            32,
 	PATH_TO_TEXTURE_ATLAS: "assets/texture_atlas.png",
 	TEXTURE_SIZE_PX:       32,
 	NOISE:                 noiseGen,
@@ -126,13 +126,13 @@ func generateChunk(chunkCoord vl.Vec2Int32) *Chunk {
 func (world *World) get(tx, ty float32) Tile {
 
 	// DEBUG CHUNK BORDERS
-	/*
-		if int32(tx)%int32(Constants.CHUNK_SIZE) == 0 || int32(ty)%int32(Constants.CHUNK_SIZE) == 0 {
-			return Tile{
-				TileType: UNDEFINED,
-			}
+	// /*
+	if int32(tx)%int32(Constants.CHUNK_SIZE) == 0 || int32(ty)%int32(Constants.CHUNK_SIZE) == 0 {
+		return Tile{
+			TileType: UNDEFINED,
 		}
-		//*/
+	}
+	//*/
 	// END DEBUG CHUNK BORDERS
 
 	key := vl.Vec2Int32{
