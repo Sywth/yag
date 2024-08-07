@@ -199,6 +199,10 @@ func NewCamera() Camera {
 	}
 }
 
+// type CameraSystem struct {
+// 	position rl.Vector2
+// }
+
 type AppSettings struct {
 	WindowSize rl.Vector2
 }

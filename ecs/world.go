@@ -1,38 +1,41 @@
 package ecs
 
+import (
+	"p3/util"
+)
+
 type World struct {
-	Name           string
-	nextSystemId   int32
-	Systems        map[int32]*System
-	nextEntityId   int32
-	EntityRegistry map[int32]*Entity
+	Name         string
+	nextSystemId int32
+	Systems      map[int32]*System
+	nextEntityId int32
+	Entities     map[int32]*Entity
 }
 
 func NewWorld(name string) *World {
 	return &World{
-		Name:           name,
-		nextSystemId:   0,
-		Systems:        make(map[int32]*System),
-		nextEntityId:   0,
-		EntityRegistry: make(map[int32]*Entity),
+		Name:         name,
+		nextSystemId: 0,
+		Systems:      make(map[int32]*System),
+		nextEntityId: 0,
+		Entities:     make(map[int32]*Entity),
 	}
 }
 
 func (w *World) RegisterNewSystem(system *System) int32 {
 	w.Systems[w.nextSystemId] = system
-	w.nextSystemId++
-	return w.nextSystemId - 1
+	defer util.IncrementInt32(&w.nextSystemId)
+	return w.nextSystemId
 }
 
 func (w *World) MakeNewEntity() int32 {
-	entity := NewEntity(w.nextEntityId)
-	w.EntityRegistry[w.nextEntityId] = entity
-	w.nextEntityId++
-	return entity.Id
+	w.Entities[w.nextEntityId] = NewEntity(w.nextEntityId)
+	defer util.IncrementInt32(&w.nextEntityId)
+	return w.nextEntityId
 }
 
 func (w *World) GetEntity(id int32) *Entity {
-	return w.EntityRegistry[id]
+	return w.Entities[id]
 }
 
 func (w *World) GetSystem(id int32) *System {
