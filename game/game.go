@@ -168,44 +168,6 @@ func (world *World) get(tx, ty float32) Tile {
 
 // END AREA : CHUNK
 
-// AREA : MODE
-type UpdateMode func(game *Game)
-
-type Mode struct {
-	Name   string
-	Update UpdateMode
-}
-
-func modeGame(game *Game) {
-	rl.BeginDrawing()
-
-	rl.ClearBackground(rl.RayWhite)
-
-	game.Draw()
-	game.HandleInput()
-
-	rl.EndDrawing()
-}
-
-func modeMenu(game *Game) {
-	rl.BeginDrawing()
-
-	rl.ClearBackground(rl.RayWhite)
-
-	rl.DrawText("Menu", 10, 10, 20, rl.Black)
-	rl.DrawText("Press Enter to start", 10, 40, 20, rl.Black)
-	if rl.IsKeyPressed(rl.KeyEnter) {
-		game.mode = Mode{
-			Name:   "game",
-			Update: func(game *Game) { modeGame(game) },
-		}
-	}
-
-	rl.EndDrawing()
-}
-
-// END AREA : MODE
-
 // AREA : ECS
 type World struct {
 	Name string
@@ -231,30 +193,31 @@ type Camera struct {
 	position rl.Vector2
 }
 
-type GameSettings struct {
+func NewCamera() Camera {
+	return Camera{
+		position: rl.NewVector2(0, 0),
+	}
+}
+
+type AppSettings struct {
 	WindowSize rl.Vector2
-	MoveSpeed  float32
-	Zoom       float32
-	ZoomSpeed  float32
 }
 
-type Game struct {
-	GameSettings GameSettings
+type App struct {
+	AppSettings  AppSettings
 	WindowTitle  string
-	world        *World
-	camera       Camera
-	textureAtlas rl.Texture2D
-	mode         Mode
+	Mode         Mode
+	TextureAtlas rl.Texture2D
 }
 
-func (game *Game) Draw() {
+func (game *ModeGame) Draw(app *App) {
 	wTopLeft := rl.NewVector2(
-		game.camera.position.X-game.GameSettings.WindowSize.X/2.0,
-		game.camera.position.Y-game.GameSettings.WindowSize.Y/2.0,
+		game.Camera.position.X-app.AppSettings.WindowSize.X/2.0,
+		game.Camera.position.Y-app.AppSettings.WindowSize.Y/2.0,
 	)
 	wBottomRight := rl.NewVector2(
-		game.camera.position.X+game.GameSettings.WindowSize.X/2.0,
-		game.camera.position.Y+game.GameSettings.WindowSize.Y/2.0,
+		game.Camera.position.X+app.AppSettings.WindowSize.X/2.0,
+		game.Camera.position.Y+app.AppSettings.WindowSize.Y/2.0,
 	)
 	tTopLeft := vl.Vec2Int32{
 		X: vl.FloorDiv(wTopLeft.X, Constants.TILE_SIZE),
@@ -270,8 +233,8 @@ func (game *Game) Draw() {
 		var sx float32 = -vl.FloatModFloat(wTopLeft.X, Constants.TILE_SIZE)
 		for tx := float32(tTopLeft.X); tx < float32(tBottomRight.X); tx += 1 {
 
-			tile := game.world.get(tx, ty)
-			tile.Draw(sx, sy, game.textureAtlas)
+			tile := game.World.get(tx, ty)
+			tile.Draw(sx, sy, app.TextureAtlas)
 			// DEBUG ORIGIN
 			/*
 				if tx == 0 && ty == 0 {
@@ -292,59 +255,26 @@ func (game *Game) Draw() {
 	}
 }
 
-func (game *Game) HandleInput() {
-
-	if rl.IsKeyDown(rl.KeyW) {
-		game.camera.position.Y -= game.GameSettings.MoveSpeed
-	}
-	if rl.IsKeyDown(rl.KeyS) {
-		game.camera.position.Y += game.GameSettings.MoveSpeed
-	}
-	if rl.IsKeyDown(rl.KeyA) {
-		game.camera.position.X -= game.GameSettings.MoveSpeed
-	}
-	if rl.IsKeyDown(rl.KeyD) {
-		game.camera.position.X += game.GameSettings.MoveSpeed
-	}
-
-	if rl.IsKeyDown(rl.KeyQ) {
-		game.GameSettings.Zoom -= game.GameSettings.ZoomSpeed
-	}
-	if rl.IsKeyDown(rl.KeyE) {
-		game.GameSettings.Zoom += game.GameSettings.ZoomSpeed
-	}
-}
-
-func NewGame() *Game {
-	game := &Game{
-		GameSettings: GameSettings{
+func NewGame() *App {
+	game := &App{
+		AppSettings: AppSettings{
 			WindowSize: rl.NewVector2(900, 800),
-			MoveSpeed:  5,
-			Zoom:       1,
-			ZoomSpeed:  0.1,
-		},
-		world: NewWorld("World 001 - YAG"),
-		camera: Camera{
-			position: rl.NewVector2(0, 0),
 		},
 		WindowTitle: "YAG",
-		mode: Mode{
-			Name:   "game",
-			Update: func(game *Game) { modeMenu(game) },
-		},
+		Mode:        NewModeMenu(),
 	}
 	return game
 }
 
-func (game *Game) Run() {
+func (app *App) Run() {
 	rl.InitWindow(
-		int32(game.GameSettings.WindowSize.X),
-		int32(game.GameSettings.WindowSize.Y),
-		game.WindowTitle,
+		int32(app.AppSettings.WindowSize.X),
+		int32(app.AppSettings.WindowSize.Y),
+		app.WindowTitle,
 	)
 
 	// Initialize texture atlas (needs be called after rl.InitWindow)
-	game.textureAtlas = rl.LoadTexture(
+	app.TextureAtlas = rl.LoadTexture(
 		Constants.PATH_TO_TEXTURE_ATLAS,
 	)
 
@@ -352,9 +282,8 @@ func (game *Game) Run() {
 
 	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
-		game.mode.Update(game)
+		app.Mode.UpdateMode(app)
 	}
-
 }
 
 // END AREA : GAME
